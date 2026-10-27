@@ -46,32 +46,53 @@ canvas{width:100%;height:480px;display:block;background:#0c0916;border-radius:10
 textarea{width:100%;height:160px;margin-top:10px;background:#150f26;color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:8px;font:12px/1.4 ui-monospace,monospace}
 #out{display:none}
 fieldset{border:1px solid var(--ln);border-radius:10px;margin:14px 0 0;padding:12px 14px}legend{padding:0 6px;color:var(--ac)}a{color:var(--d)}
+.drop input,.btn input{position:absolute;opacity:0;width:1px;height:1px}.btn{display:inline-block}.btn.alt{background:transparent;color:var(--tx);border:1px solid var(--ln)}.btn:focus-within{outline:2px solid var(--ac);outline-offset:2px}
+details{margin-top:14px}summary{cursor:pointer;color:var(--ac)}details>.grid,details>.chk{margin-top:12px}
+.dls{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}.dls .hint{margin:6px 0 0}.dls button{width:100%}
+#chat{max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:8px;background:#0c0916;border-radius:10px;padding:10px}.bub{max-width:88%;padding:8px 12px;border-radius:12px;white-space:pre-wrap}.bub.u{align-self:flex-end;background:var(--ac);color:#1b1500}.bub.g{align-self:flex-start;background:#2a2148;border:1px solid var(--ln)}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.chips button{padding:6px 12px;font-weight:500}
 </style>
 </head>
 <body>
 <main>
 <h1>FNF AI Charter</h1>
-<p class="sub">Sube la instrumental y las dos voces de tu canción. La página detecta el tempo y las notas, y te entrega un chart listo para Psych Engine. Todo se analiza en tu navegador; los audios no se suben a ningún servidor.</p>
+<p class="sub">Suelta los tres audios de tu canción y descarga el chart para Psych Engine. Los audios se analizan en tu navegador y no se suben a ningún servidor.</p>
 
 <section>
 <h2>1. Audios</h2>
 <label class="drop" id="drop">
 <input type="file" id="files" accept=".ogg,audio/ogg,audio/*" multiple>
-Arrastra aquí los tres archivos, o toca para elegirlos
+Suelta aquí la carpeta de la canción o los tres audios, o toca para elegirlos
 </label>
 <ul class="slots">
 <li data-k="inst"><span>Inst.ogg</span><em>falta</em></li>
 <li data-k="opp"><span>Voices-Opponent.ogg</span><em>falta</em></li>
 <li data-k="ply"><span>Voices-Player.ogg</span><em>falta</em></li>
 </ul>
-<p class="hint">Basta con una de las dos voces, pero la Inst da un tempo más fiable.</p>
+<div class="row"><label class="btn alt">Elegir carpeta de la canción<input type="file" id="dirf" webkitdirectory></label></div>
+<p class="hint">Con los tres audios el chart se genera solo. Basta con una voz, pero la Inst da un tempo más fiable.</p>
 </section>
 
 <section>
-<h2>2. Ajustes</h2>
+<h2>2. Generar</h2>
+<div class="row" style="margin-top:0;align-items:flex-end">
+<label class="f" style="min-width:160px">Dificultad<select id="diff"><option value="easy">Fácil</option><option value="normal" selected>Normal</option><option value="hard">Difícil</option></select></label>
+<button id="go" disabled>Generar chart</button>
+</div>
+<div id="msg" role="status" aria-live="polite"></div>
+<details id="gem">
+<summary>Mejorar con Gemini (opcional)</summary>
+<label class="chk"><input type="checkbox" id="ai"> Usar Gemini para decidir las flechas y qué voz canta en cada sección</label>
+<div class="grid">
+<label class="f">API key de Gemini<input type="password" id="key" autocomplete="off" placeholder="AIza…"></label>
+<label class="f">Modelo<input type="text" id="mdl" value="gemini-3.8-flash"></label>
+</div>
+<div class="row" style="margin-top:12px"><button type="button" class="alt" id="ksave">Guardar clave</button><button type="button" class="alt" id="kdel">Quitar clave</button><button type="button" class="alt" id="kview">Ver</button><span class="hint" id="kst" style="margin:0"></span></div>
+<p class="hint">Crea una clave en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. Al escribirla, Gemini se activa solo. Pulsa “Guardar clave” para no pegarla otra vez; se guarda solo en este navegador. La clave va directo a Google y no se guarda en el repo. Gemini recibe los tiempos y rasgos de las notas, no el audio.</p>
+</details>
+<details>
+<summary>Ajustes avanzados</summary>
 <div class="grid">
 <label class="f">Nombre de la canción<input type="text" id="name" value="mi-cancion"></label>
-<label class="f">Dificultad<select id="diff"><option value="easy">Fácil</option><option value="normal" selected>Normal</option><option value="hard">Difícil</option></select></label>
 <label class="f">Cuantizar<select id="snap"><option value="16">1/16 (cada step)</option><option value="8">1/8</option><option value="0">Libre</option></select></label>
 <label class="f">BPM (vacío = automático)<input type="number" id="bpm" min="40" max="300" step="0.1" placeholder="auto"></label>
 <label class="f">Desfase de la rejilla (ms)<input type="number" id="off" value="0" step="1"></label>
@@ -80,23 +101,10 @@ Arrastra aquí los tres archivos, o toca para elegirlos
 <label class="f">Oponente<input type="text" id="p2" value="dad"></label>
 <label class="f">Novia (GF)<input type="text" id="p3" value="gf"></label>
 <label class="f">Escenario<input type="text" id="stage" value="stage"></label>
-</div>
-<div class="grid" style="margin-top:12px">
 <label class="f">Densidad de notas<input type="range" id="dens" min="0" max="100" value="50"></label>
-<label class="f">&nbsp;<span class="chk"><input type="checkbox" id="sus" checked> Notas largas (sustains)</span></label>
 </div>
-<fieldset>
-<legend>Gemini (opcional)</legend>
-<label class="chk"><input type="checkbox" id="ai"> Usar Gemini para decidir las flechas y qué voz canta en cada sección</label>
-<div class="grid" style="margin-top:12px">
-<label class="f">API key de Gemini<input type="password" id="key" autocomplete="off" placeholder="AIza…"></label>
-<label class="f">Modelo<input type="text" id="mdl" value="gemini-3.8-flash"></label>
-</div>
-<label class="chk" style="margin-top:10px"><input type="checkbox" id="rem"> Recordar la clave en este navegador</label>
-<p class="hint">Crea una clave en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. La clave va del navegador directo a Google y no se guarda en el repo. Gemini recibe los tiempos y rasgos de las notas, no el audio.</p>
-</fieldset>
-<div class="row"><button id="go" disabled>Generar chart</button></div>
-<div id="msg" role="status" aria-live="polite"></div>
+<label class="chk"><input type="checkbox" id="sus" checked> Notas largas (sustains)</label>
+</details>
 </section>
 
 <section id="out">
@@ -108,22 +116,37 @@ Arrastra aquí los tres archivos, o toca para elegirlos
 <span id="time">0:00</span>
 </div>
 <p class="hint" id="stats"></p>
-<h2 style="margin-top:18px">Versión de Psych Engine</h2>
-<div class="tabs">
-<label><input type="radio" name="ver" value="063">0.6.3</label>
-<label><input type="radio" name="ver" value="073" checked>0.7.3</label>
-<label><input type="radio" name="ver" value="104">1.0.4</label>
+<div id="chatbox" style="display:none">
+<h2 style="margin-top:18px">Chat con Gemini</h2>
+<div id="chat" aria-live="polite"></div>
+<div class="chips">
+<button class="alt chip" data-t="Hazlo un poco más difícil, con más notas.">Más difícil</button>
+<button class="alt chip" data-t="Hazlo más fácil, quita notas.">Más fácil</button>
+<button class="alt chip" data-t="Haz los patrones de flechas más variados.">Patrones más variados</button>
+<button class="alt chip" data-t="Haz el estribillo más intenso que el resto.">Estribillo más intenso</button>
 </div>
-<p class="hint" id="vh"></p>
-<div class="row"><button id="dl">Descargar JSON</button><button id="cp" class="alt">Copiar JSON</button></div>
-<details><summary class="hint">Ver JSON</summary><textarea id="js" readonly></textarea></details>
+<div class="row"><input type="text" id="cin" placeholder="Pídele cambios al chart…" style="flex:1;min-width:200px" autocomplete="off"><button id="csend">Enviar</button></div>
+</div>
+<h2 style="margin-top:18px">Descargar el chart</h2>
+<div class="dls">
+<div><button class="dlv" data-v="063">Psych 0.6.3</button><p class="hint">Solo lee un Voices.ogg: mezcla las dos voces en uno.</p></div>
+<div><button class="dlv" data-v="073">Psych 0.7.3</button><p class="hint">Admite voces separadas (Player y Opponent).</p></div>
+<div><button class="dlv" data-v="104">Psych 1.0.4</button><p class="hint">Formato psych_v1. Compruébalo en el Chart Editor.</p></div>
+</div>
 </section>
 </main>
 
 <script>
 const $=s=>document.querySelector(s),AC=new(window.AudioContext||window.webkitAudioContext)();
-const S={inst:null,opp:null,ply:null},R={};let warn='';
-try{$('#key').value=localStorage.getItem('fnfk')||'';$('#rem').checked=!!$('#key').value}catch{}
+const S={inst:null,opp:null,ply:null},R={};let warn='',busy=false;
+try{$('#key').value=localStorage.getItem('fnfk')||''}catch{}
+if($('#key').value){$('#ai').checked=true;$('#gem').open=true}
+$('#key').oninput=()=>{$('#ai').checked=!!$('#key').value.trim()};
+const KS=()=>{let v='';try{v=localStorage.getItem('fnfk')||''}catch{}$('#kst').textContent=v?'Clave guardada en este navegador.':'Sin clave guardada.'};
+$('#ksave').onclick=()=>{const k=$('#key').value.trim();if(!k){$('#kst').textContent='Escribe la clave primero.';return}try{localStorage.setItem('fnfk',k);KS()}catch{$('#kst').textContent='Tu navegador no permite guardarla.'}};
+$('#kdel').onclick=()=>{try{localStorage.removeItem('fnfk')}catch{}$('#key').value='';$('#ai').checked=false;KS()};
+$('#kview').onclick=()=>{const i=$('#key'),h=i.type==='password';i.type=h?'text':'password';$('#kview').textContent=h?'Ocultar':'Ver'};
+KS();
 const SL=[['inst',/inst/i],['opp',/opponent|oponente/i],['ply',/player|jugador/i]];
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 const say=(m,bad)=>{const e=$('#msg');e.textContent=m;e.className=bad?'bad':''};
@@ -139,12 +162,28 @@ async function addFiles(fs){
     catch(e){S[k]=null;slot(k,'no se pudo leer');say('El navegador no pudo decodificar “'+f.name+'”. Prueba con Chrome, Edge o Firefox.',true)}
   }
   $('#go').disabled=!(S.opp||S.ply);
+  if(S.inst&&S.opp&&S.ply)generate();
 }
 $('#files').onchange=e=>addFiles(e.target.files);
+const AUD=/\.(ogg|mp3|wav)$/i;
+async function dropFiles(dt){
+  const its=[...dt.items].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean),out=[];let folder='';
+  const walk=async en=>{
+    if(en.isFile)out.push(await new Promise(r=>en.file(r)));
+    else if(en.isDirectory){if(!folder)folder=en.name;const rd=en.createReader();let all=[];for(;;){const b=await new Promise(r=>rd.readEntries(r));if(!b.length)break;all=all.concat(b)}for(const c of all)await walk(c)}
+  };
+  if(its.length)for(const en of its)await walk(en);else out.push(...dt.files);
+  if(folder){$('#name').value=folder;addFiles(out.filter(f=>AUD.test(f.name)))}else addFiles(out);
+}
+$('#dirf').onchange=e=>{
+  const fs=[...e.target.files].filter(f=>AUD.test(f.name));
+  if(fs[0]&&fs[0].webkitRelativePath)$('#name').value=fs[0].webkitRelativePath.split('/')[0];
+  addFiles(fs);
+};
 const dz=$('#drop');
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('over')};
 dz.ondragleave=()=>dz.classList.remove('over');
-dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');addFiles(e.dataTransfer.files)};
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');dropFiles(e.dataTransfer)};
 
 function fft(re,im){
   const n=re.length;
@@ -223,7 +262,7 @@ function notesFor(a,mult,gapMs,step,t0,g,sus){
 const avg=(a,t0,t1)=>{const i0=Math.floor(t0/1000/a.hop),i1=Math.min(a.rms.length,Math.ceil(t1/1000/a.hop));let s=0;for(let i=i0;i<i1;i++)s+=a.rms[i];return i1>i0?s/(i1-i0):0};
 
 async function generate(){
-  const btn=$('#go');btn.disabled=true;stop();warn='';
+  if(busy)return;busy=true;const btn=$('#go');btn.disabled=true;stop();warn='';
   try{
     const A={};
     for(const [k,n] of [['inst','Inst'],['opp','Voices-Opponent'],['ply','Voices-Player']])if(S[k]){say('Analizando '+n+'…');A[k]=await analyze(S[k])}
@@ -243,27 +282,54 @@ async function generate(){
       if(po+oo>1e-4&&Math.abs(po-oo)>.15*Math.max(po,oo))last=po>oo;
       mh.push(last);
     }
-    if($('#ai').checked){say('Pidiendo a Gemini…');try{await gemini(A,n,mh,bpm,step)}catch(e){warn='Gemini no respondió ('+e.message+'). Usé el análisis local.'}}
-    const secs=Array.from({length:n},(_,s)=>({sectionNotes:[],sectionBeats:4,mustHitSection:mh[s],gfSection:false,bpm,changeBPM:false,altAnim:false,typeOfSection:0}));
-    for(const [list,side] of [[R.opp,0],[R.ply,1]])for(const o of list){
-      const s=Math.min(n-1,Math.floor(o.t/sec)),hit=secs[s].mustHitSection,lane=((side===1)===hit)?o.l:o.l+4;
-      secs[s].sectionNotes.push([Math.round(o.t),lane,Math.round(o.s)]);
-    }
-    secs.forEach(s=>s.sectionNotes.sort((a,b)=>a[0]-b[0]));
-    Object.assign(R,{secs,bpm,dur,t0});
+    Object.assign(R,{n,mh,bpm,sec,dur,t0});G.h=[];$('#chat').textContent='';$('#chatbox').style.display='none';
+    if($('#ai').checked){say('Pidiendo a Gemini…');try{await gemini(A)}catch(e){warn='Gemini no respondió ('+e.message+'). Usé el análisis local.'}}
+    assemble();
     $('#out').style.display='block';
     $('#sl').max=Math.floor(dur/100);cur=0;$('#sl').value=0;
-    $('#stats').textContent=bpm+' BPM · '+n+' secciones · '+R.opp.length+' notas del oponente · '+R.ply.length+' notas del jugador';
-    refresh();draw();say(warn||('Listo. Revisa la vista previa y descarga el chart.'+($('#ai').checked?' Ajustado con Gemini.':'')),!!warn);
+    draw();say(warn||('Listo. Revisa la vista previa y descarga el chart.'+($('#ai').checked?' Ajustado con Gemini.':'')),!!warn);
     $('#out').scrollIntoView({behavior:'smooth'});
   }catch(e){say(e.message||'No se pudo generar el chart.',true)}
-  btn.disabled=false;
+  btn.disabled=false;busy=false;
 }
-async function gemini(A,n,mh,bpm,step){
+const G={h:[],orig:null,busy:false};
+function assemble(){
+  const {n,mh,bpm,sec}=R;
+  const secs=Array.from({length:n},(_,s)=>({sectionNotes:[],sectionBeats:4,mustHitSection:mh[s],gfSection:false,bpm,changeBPM:false,altAnim:false,typeOfSection:0}));
+  for(const [list,side] of [[R.opp,0],[R.ply,1]])for(const o of list){
+    const s=Math.min(n-1,Math.floor(o.t/sec)),hit=secs[s].mustHitSection,lane=((side===1)===hit)?o.l:o.l+4;
+    secs[s].sectionNotes.push([Math.round(o.t),lane,Math.round(o.s)]);
+  }
+  secs.forEach(x=>x.sectionNotes.sort((a,b)=>a[0]-b[0]));
+  R.secs=secs;
+  $('#stats').textContent=bpm+' BPM · '+n+' secciones · '+R.opp.length+' notas del oponente · '+R.ply.length+' notas del jugador';
+}
+function bub(who,t){const d=document.createElement('div');d.className='bub '+who;d.textContent=t;const c=$('#chat');c.appendChild(d);c.scrollTop=c.scrollHeight}
+function applyAI(j){
+  const bad=[];
+  for(const k of ['opp','ply']){
+    const l=G.orig[k];if(!l.length)continue;const a=j[k];
+    if(!Array.isArray(a)||a.length!==l.length){bad.push(k);continue}
+    const keep=l.map((o,i)=>[o,a[i]]).filter(([o,v])=>v>=0&&v<=3);
+    if(keep.length<Math.max(4,l.length*.25)){bad.push(k);continue}
+    R[k]=keep.map(([o,v])=>({...o,l:v|0}));
+  }
+  if(Array.isArray(j.mustHit)&&j.mustHit.length===R.n)j.mustHit.forEach((v,i)=>R.mh[i]=!!v);else bad.push('mustHit');
+  return bad;
+}
+async function callG(){
   const key=$('#key').value.trim();if(!key)throw new Error('falta la API key');
-  try{$('#rem').checked?localStorage.setItem('fnfk',key):localStorage.removeItem('fnfk')}catch{}
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent($('#mdl').value.trim()||'gemini-3.8-flash')+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:G.h,generationConfig:{responseMimeType:'application/json',responseSchema:{type:'OBJECT',properties:{opp:{type:'ARRAY',items:{type:'INTEGER'}},ply:{type:'ARRAY',items:{type:'INTEGER'}},mustHit:{type:'ARRAY',items:{type:'BOOLEAN'}},resumen:{type:'STRING'}},required:['opp','ply','mustHit','resumen']},temperature:.4,maxOutputTokens:32768}})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error&&d.error.message||('HTTP '+r.status));
+  const txt=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
+  if(!txt)throw new Error('respuesta vacía');
+  const j=JSON.parse(txt);G.h.push({role:'model',parts:[{text:txt}]});return j;
+}
+async function gemini(A){
+  const key=$('#key').value.trim();if(!key)throw new Error('falta la API key');
+  const {n,bpm,sec}=R,step=sec/16;
   const rows=l=>{const m=Math.max(1e-9,...l.map(o=>o.v));return l.map(o=>Math.round(o.t)+','+o.c+','+Math.min(9,Math.round(o.v/m*9))).join(';')};
-  const sec=step*16,lv=[];let mx=1e-9;
+  const lv=[];let mx=1e-9;
   for(let s=0;s<n;s++){const p=A.ply?avg(A.ply,s*sec,(s+1)*sec):0,o=A.opp?avg(A.opp,s*sec,(s+1)*sec):0;lv.push([p,o]);mx=Math.max(mx,p,o)}
   const loud=lv.map(([p,o])=>Math.round(p/mx*9)+','+Math.round(o/mx*9)).join(';');
   const prompt=`You are an expert Friday Night Funkin' (Psych Engine) charter. Audio analysis already found the note timings; your job is the musical decisions.
@@ -273,23 +339,31 @@ Each note is "t_ms,pitch,strength": pitch is a 0 (lowest) to 99 (highest) timbre
 OPPONENT notes (${R.opp.length}): ${rows(R.opp)}
 PLAYER notes (${R.ply.length}): ${rows(R.ply)}
 LOUDNESS per section "player,opponent" (0-9): ${loud}
-Return JSON with: opp = one integer per opponent note, same order, the lane 0-3 or -1 to remove a bad or redundant note; ply = the same for player notes; mustHit = one boolean per section, true when the player is the main singer of that section.
+Return JSON with: opp = one integer per opponent note, same order, the lane 0-3 or -1 to remove a bad or redundant note; ply = the same for player notes; mustHit = one boolean per section, true when the player is the main singer of that section; resumen = 2 or 3 short sentences in Spanish explaining your choices.
 Rules: follow the melody contour (higher pitch, higher lane); repeat the same pattern for repeated phrases; use streams and short jacks sparingly; never more than 3 notes in a row on one lane; keep the density playable for the difficulty (easy: remove notes down to roughly one per beat, normal: moderate, hard: keep most notes); stress strong notes. Never change the number of entries unless you use -1 to remove.`;
-  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent($('#mdl').value.trim()||'gemini-3.8-flash')+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json',responseSchema:{type:'OBJECT',properties:{opp:{type:'ARRAY',items:{type:'INTEGER'}},ply:{type:'ARRAY',items:{type:'INTEGER'}},mustHit:{type:'ARRAY',items:{type:'BOOLEAN'}}},required:['opp','ply','mustHit']},temperature:.4,maxOutputTokens:32768}})});
-  const d=await r.json();if(!r.ok)throw new Error(d.error&&d.error.message||('HTTP '+r.status));
-  const txt=((d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
-  if(!txt)throw new Error('respuesta vacía');
-  const j=JSON.parse(txt),bad=[];
-  for(const k of ['opp','ply']){
-    const l=R[k];if(!l.length)continue;const a=j[k];
-    if(!Array.isArray(a)||a.length!==l.length){bad.push(k);continue}
-    const keep=l.map((o,i)=>[o,a[i]]).filter(([o,v])=>v>=0&&v<=3);
-    if(keep.length<Math.max(4,l.length*.25)){bad.push(k);continue}
-    R[k]=keep.map(([o,v])=>(o.l=v|0,o));
-  }
-  if(Array.isArray(j.mustHit)&&j.mustHit.length===n)j.mustHit.forEach((v,i)=>mh[i]=!!v);else bad.push('mustHit');
+  G.orig={opp:R.opp.map(o=>({...o})),ply:R.ply.map(o=>({...o}))};
+  G.h=[{role:'user',parts:[{text:prompt}]}];
+  const j=await callG(),bad=applyAI(j);
+  $('#chatbox').style.display='block';
+  bub('u','Le envié '+G.orig.opp.length+' notas del oponente, '+G.orig.ply.length+' del jugador y el volumen de '+n+' secciones.');
+  bub('g',j.resumen||'Listo.');
   if(bad.length)warn='Gemini devolvió datos incompletos ('+bad.join(', ')+'); en esa parte usé el análisis local.';
 }
+async function send(){
+  const t=$('#cin').value.trim();if(!t||!R.secs||!G.h.length||G.busy)return;
+  $('#cin').value='';bub('u',t);bub('g','Pensando…');G.busy=true;$('#csend').disabled=true;
+  const n0=G.h.length,last=$('#chat').lastChild;
+  try{
+    G.h.push({role:'user',parts:[{text:t+'\n\nApply this to the chart. Return the full JSON again: opp and ply must keep one entry per ORIGINAL note (same lengths as in the first message, -1 removes a note), mustHit one per section, and a short resumen in Spanish.'}]});
+    const j=await callG(),bad=applyAI(j);
+    assemble();draw();
+    last.textContent=(j.resumen||'Listo.')+(bad.length?'\n(Datos incompletos en: '+bad.join(', ')+'; esa parte no cambió.)':'');
+  }catch(e){G.h.length=n0;last.textContent='Error: '+e.message}
+  G.busy=false;$('#csend').disabled=false;
+}
+$('#csend').onclick=send;
+$('#cin').onkeydown=e=>{if(e.key==='Enter')send()};
+document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{$('#cin').value=b.dataset.t;send()});
 $('#go').onclick=generate;
 
 const slug=()=>($('#name').value.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''))||'cancion';
@@ -299,19 +373,11 @@ function chart(v){
   if(v==='073')return{song:{...m,validScore:true,disableNoteRGB:false}};
   return{...m,offset:0,format:'psych_v1',disableNoteRGB:false};
 }
-const HINT={'063':'Psych 0.6.3 solo lee un Voices.ogg: mezcla las dos voces en un solo archivo con ese nombre.','073':'Psych 0.7.x admite voces separadas: copia Inst.ogg, Voices-Player.ogg y Voices-Opponent.ogg junto al chart.','104':'Formato psych_v1. Ábrelo en el Chart Editor de Psych 1.0.4 para comprobar que carga bien.'};
-function refresh(){
-  const v=document.querySelector('[name=ver]:checked').value;
-  $('#js').value=JSON.stringify(chart(v));$('#vh').textContent=HINT[v];
-}
-document.querySelectorAll('[name=ver]').forEach(r=>r.onchange=()=>R.secs&&refresh());
-['name','spd','p1','p2','p3','stage'].forEach(i=>$('#'+i).oninput=()=>R.secs&&refresh());
-$('#dl').onclick=()=>{
+document.querySelectorAll('.dlv').forEach(b=>b.onclick=()=>{
   const d=$('#diff').value,suf=d==='normal'?'':'-'+d,a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([$('#js').value],{type:'application/json'}));
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(chart(b.dataset.v))],{type:'application/json'}));
   a.download=slug()+suf+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-};
-$('#cp').onclick=async()=>{try{await navigator.clipboard.writeText($('#js').value);$('#cp').textContent='Copiado'}catch{$('#js').select()}setTimeout(()=>$('#cp').textContent='Copiar JSON',1500)};
+});
 
 /* Vista previa */
 const cv=$('#cv'),cx=cv.getContext('2d'),COL=['#c24b99','#00e5ff','#12fa05','#f9393f'],ROT=[Math.PI,Math.PI/2,-Math.PI/2,0];
