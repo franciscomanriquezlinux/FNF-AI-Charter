@@ -107,18 +107,9 @@ Suelta aquí la carpeta de la canción o los tres audios, o toca para elegirlos
 </details>
 </section>
 
-<section id="out">
-<h2>3. Vista previa y descarga</h2>
-<canvas id="cv" aria-label="Vista previa de las notas"></canvas>
-<div class="row">
-<button id="pl" class="alt">Reproducir</button>
-<input type="range" id="sl" min="0" max="0" value="0" style="flex:1;min-width:140px" aria-label="Posición">
-<span id="time">0:00</span>
-</div>
-<p class="hint" id="stats"></p>
-<div id="chatbox" style="display:none">
-<h2 style="margin-top:18px">Chat con Gemini</h2>
-<div id="chat" aria-live="polite"></div>
+<section id="chatbox">
+<h2>3. Chat con Gemini</h2>
+<div id="chat" aria-live="polite"><div class="bub g">Primero genera un chart en la sección 2. Después puedes pedirme cambios aquí, por ejemplo: “más notas en el estribillo”.</div></div>
 <div class="chips">
 <button class="alt chip" data-t="Hazlo un poco más difícil, con más notas.">Más difícil</button>
 <button class="alt chip" data-t="Hazlo más fácil, quita notas.">Más fácil</button>
@@ -126,7 +117,17 @@ Suelta aquí la carpeta de la canción o los tres audios, o toca para elegirlos
 <button class="alt chip" data-t="Haz el estribillo más intenso que el resto.">Estribillo más intenso</button>
 </div>
 <div class="row"><input type="text" id="cin" placeholder="Pídele cambios al chart…" style="flex:1;min-width:200px" autocomplete="off"><button id="csend">Enviar</button></div>
+</section>
+
+<section id="out">
+<h2>4. Vista previa y descarga</h2>
+<canvas id="cv" aria-label="Vista previa de las notas"></canvas>
+<div class="row">
+<button id="pl" class="alt">Reproducir</button>
+<input type="range" id="sl" min="0" max="0" value="0" style="flex:1;min-width:140px" aria-label="Posición">
+<span id="time">0:00</span>
 </div>
+<p class="hint" id="stats"></p>
 <h2 style="margin-top:18px">Descargar el chart</h2>
 <div class="dls">
 <div><button class="dlv" data-v="063">Psych 0.6.3</button><p class="hint">Solo lee un Voices.ogg: mezcla las dos voces en uno.</p></div>
@@ -282,8 +283,16 @@ async function generate(){
       if(po+oo>1e-4&&Math.abs(po-oo)>.15*Math.max(po,oo))last=po>oo;
       mh.push(last);
     }
-    Object.assign(R,{n,mh,bpm,sec,dur,t0});G.h=[];$('#chat').textContent='';$('#chatbox').style.display='none';
-    if($('#ai').checked){say('Pidiendo a Gemini…');try{await gemini(A)}catch(e){warn='Gemini no respondió ('+e.message+'). Usé el análisis local.'}}
+    Object.assign(R,{n,mh,bpm,sec,dur,t0,A});G.h=[];$('#chat').textContent='';$('#chatbox').style.display='block';
+    if($('#ai').checked){
+      say('Pidiendo a Gemini…');
+      try{
+        const {j,bad}=await gemini(A);
+        bub('u','Le envié '+G.orig.opp.length+' notas del oponente, '+G.orig.ply.length+' del jugador y el volumen de '+n+' secciones.');
+        bub('g',j.resumen||'Listo.');
+        if(bad.length)warn='Gemini devolvió datos incompletos ('+bad.join(', ')+'); en esa parte usé el análisis local.';
+      }catch(e){warn='Gemini no respondió ('+e.message+'). Usé el análisis local.';bub('g','Error: '+e.message+'\nPuedes escribirme un cambio aquí para reintentar.')}
+    }else bub('g','Este chart usa solo el análisis local. Pega tu API key en “Mejorar con Gemini” y escríbeme aquí qué quieres cambiar.');
     assemble();
     $('#out').style.display='block';
     $('#sl').max=Math.floor(dur/100);cur=0;$('#sl').value=0;
@@ -325,7 +334,7 @@ async function callG(){
   if(!txt)throw new Error('respuesta vacía');
   const j=JSON.parse(txt);G.h.push({role:'model',parts:[{text:txt}]});return j;
 }
-async function gemini(A){
+async function gemini(A,extra){
   const key=$('#key').value.trim();if(!key)throw new Error('falta la API key');
   const {n,bpm,sec}=R,step=sec/16;
   const rows=l=>{const m=Math.max(1e-9,...l.map(o=>o.v));return l.map(o=>Math.round(o.t)+','+o.c+','+Math.min(9,Math.round(o.v/m*9))).join(';')};
@@ -342,20 +351,23 @@ LOUDNESS per section "player,opponent" (0-9): ${loud}
 Return JSON with: opp = one integer per opponent note, same order, the lane 0-3 or -1 to remove a bad or redundant note; ply = the same for player notes; mustHit = one boolean per section, true when the player is the main singer of that section; resumen = 2 or 3 short sentences in Spanish explaining your choices.
 Rules: follow the melody contour (higher pitch, higher lane); repeat the same pattern for repeated phrases; use streams and short jacks sparingly; never more than 3 notes in a row on one lane; keep the density playable for the difficulty (easy: remove notes down to roughly one per beat, normal: moderate, hard: keep most notes); stress strong notes. Never change the number of entries unless you use -1 to remove.`;
   G.orig={opp:R.opp.map(o=>({...o})),ply:R.ply.map(o=>({...o}))};
-  G.h=[{role:'user',parts:[{text:prompt}]}];
-  const j=await callG(),bad=applyAI(j);
-  $('#chatbox').style.display='block';
-  bub('u','Le envié '+G.orig.opp.length+' notas del oponente, '+G.orig.ply.length+' del jugador y el volumen de '+n+' secciones.');
-  bub('g',j.resumen||'Listo.');
-  if(bad.length)warn='Gemini devolvió datos incompletos ('+bad.join(', ')+'); en esa parte usé el análisis local.';
+  G.h=[{role:'user',parts:[{text:prompt+(extra?'\n\nUser request: '+extra:'')}]}];
+  let j;try{j=await callG()}catch(e){G.h=[];throw e}
+  return{j,bad:applyAI(j)};
 }
 async function send(){
-  const t=$('#cin').value.trim();if(!t||!R.secs||!G.h.length||G.busy)return;
+  const t=$('#cin').value.trim();if(!t||G.busy)return;
+  if(!R.secs){bub('u',t);bub('g','Primero genera un chart (sección 2) y luego te ayudo a cambiarlo.');$('#cin').value='';return}
+  if(!$('#key').value.trim()){bub('u',t);bub('g','Falta la API key. Pégala en “Mejorar con Gemini” (sección 2) y vuelve a enviar el mensaje.');$('#gem').open=true;return}
   $('#cin').value='';bub('u',t);bub('g','Pensando…');G.busy=true;$('#csend').disabled=true;
   const n0=G.h.length,last=$('#chat').lastChild;
   try{
-    G.h.push({role:'user',parts:[{text:t+'\n\nApply this to the chart. Return the full JSON again: opp and ply must keep one entry per ORIGINAL note (same lengths as in the first message, -1 removes a note), mustHit one per section, and a short resumen in Spanish.'}]});
-    const j=await callG(),bad=applyAI(j);
+    let j,bad;
+    if(!G.h.length)({j,bad}=await gemini(R.A,t));
+    else{
+      G.h.push({role:'user',parts:[{text:t+'\n\nApply this to the chart. Return the full JSON again: opp and ply must keep one entry per ORIGINAL note (same lengths as in the first message, -1 removes a note), mustHit one per section, and a short resumen in Spanish.'}]});
+      j=await callG();bad=applyAI(j);
+    }
     assemble();draw();
     last.textContent=(j.resumen||'Listo.')+(bad.length?'\n(Datos incompletos en: '+bad.join(', ')+'; esa parte no cambió.)':'');
   }catch(e){G.h.length=n0;last.textContent='Error: '+e.message}
