@@ -104,6 +104,8 @@ Suelta aquí la carpeta de la canción o los tres audios, o toca para elegirlos
 <label class="f">Densidad de notas<input type="range" id="dens" min="0" max="100" value="50"></label>
 </div>
 <label class="chk"><input type="checkbox" id="sus" checked> Notas largas (sustains)</label>
+<label class="chk"><input type="checkbox" id="swp"> Intercambiar jugador y oponente</label>
+<label class="chk"><input type="checkbox" id="mir"> Espejo de flechas (izquierda ↔ derecha)</label>
 </details>
 </section>
 
@@ -132,8 +134,9 @@ Suelta aquí la carpeta de la canción o los tres audios, o toca para elegirlos
 <div class="dls">
 <div><button class="dlv" data-v="063">Psych 0.6.3</button><p class="hint">Solo lee un Voices.ogg: mezcla las dos voces en uno.</p></div>
 <div><button class="dlv" data-v="073">Psych 0.7.3</button><p class="hint">Admite voces separadas (Player y Opponent).</p></div>
-<div><button class="dlv" data-v="104">Psych 1.0.4</button><p class="hint">Formato psych_v1. Compruébalo en el Chart Editor.</p></div>
+<div><button class="dlv" data-v="104">Psych 1.0.4</button><p class="hint">Formato psych_v1 (0–3 jugador, 4–7 oponente). Compruébalo en el Chart Editor.</p></div>
 </div>
+<p class="hint">¿Jugador y oponente o flechas al revés? Actívalo en Ajustes avanzados: “Intercambiar jugador y oponente” o “Espejo de flechas”.</p>
 </section>
 </main>
 
@@ -202,54 +205,89 @@ async function analyze(buf){
   for(let c=0;c<buf.numberOfChannels;c++){const d=buf.getChannelData(c);for(let i=0;i<L;i++)x[i]+=d[i]/buf.numberOfChannels}
   const F=Math.max(0,Math.floor((L-N)/H)),flux=new Float32Array(F),cent=new Float32Array(F),rms=new Float32Array(F);
   const win=new Float32Array(N);for(let i=0;i<N;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(N-1));
-  const re=new Float32Array(N),im=new Float32Array(N),prev=new Float32Array(N/2),kmax=Math.min(N/2-1,Math.round(5000/(sr/N)));
+  const NB=24,fmax=Math.min(8000,sr/2.2),ed=[];
+  for(let b=0;b<=NB;b++)ed.push(Math.max(2,Math.round(80*Math.pow(fmax/80,b/NB)*N/sr)));
+  const kmax=ed[NB],re=new Float32Array(N),im=new Float32Array(N),mag=new Float32Array(kmax+2);
+  let e0=new Float32Array(NB),e1=new Float32Array(NB),e2=new Float32Array(NB);
   for(let f=0;f<F;f++){
     let e=0;for(let i=0;i<N;i++){const v=x[f*H+i];e+=v*v;re[i]=v*win[i];im[i]=0}
     rms[f]=Math.sqrt(e/N);fft(re,im);
-    let fl=0,nu=0,de=0;
-    for(let k=1;k<=kmax;k++){const m=Math.log1p(Math.hypot(re[k],im[k])*.1);fl+=Math.max(0,m-prev[k]);prev[k]=m;nu+=k*m;de+=m}
-    flux[f]=fl;cent[f]=de>0?nu/de:0;
+    let nu=0,de=0;for(let k=1;k<=kmax;k++){const m=Math.hypot(re[k],im[k]);mag[k]=m;nu+=k*m;de+=m}
+    cent[f]=de>0?nu/de:0;
+    for(let b=0;b<NB;b++){const lo=ed[b],hi=Math.max(lo+1,ed[b+1]);let sm=0;for(let k=lo;k<hi;k++)sm+=mag[k];e0[b]=Math.log1p(sm/(hi-lo)*.1)}
+    let fl=0;for(let b=0;b<NB;b++){const r=Math.max(e2[b],b>0?e2[b-1]:0,b<NB-1?e2[b+1]:0);fl+=Math.max(0,e0[b]-r)}
+    flux[f]=fl;const t=e2;e2=e1;e1=e0;e0=t;
     if(f%600===0)await sleep();
   }
-  return{flux,cent,rms,hop:H/sr,off:N*.25/sr*1000};
+  const so=Float32Array.from(rms).sort(),lvl=so[Math.floor(so.length*.95)]||0;
+  let vc=0;for(let f=0;f<F;f++)if(rms[f]>lvl*.12)vc++;
+  return{x,sr,flux,cent,rms,hop:H/sr,off:N*.25/sr*1000,lvl,voiced:vc*H/sr};
 }
 
 function peaks(a,mult,gapMs){
-  const f=a.flux,n=f.length,P=new Float64Array(n+1);let mx=0;
-  for(let i=0;i<n;i++){P[i+1]=P[i]+f[i];if(f[i]>mx)mx=f[i]}
-  const W=Math.round(.4/a.hop),res=[];
+  const f=a.flux,n=f.length,W=Math.max(4,Math.round(.35/a.hop)),gate=a.lvl*.12,res=[];let mx=0;
+  for(let i=0;i<n;i++)if(f[i]>mx)mx=f[i];
   for(let i=2;i<n-2;i++){
-    const lo=Math.max(0,i-W),hi=Math.min(n,i+W),mean=(P[hi]-P[lo])/(hi-lo),v=f[i];
-    if(v>mean*mult+mx*.06&&v>=f[i-1]&&v>=f[i+1]&&v>=f[i-2]&&v>=f[i+2]){
-      const p={i,v,t:i*a.hop*1000+a.off},l=res[res.length-1];
-      if(l&&p.t-l.t<gapMs){if(p.v>l.v)res[res.length-1]=p}else res.push(p);
-    }
+    const v=f[i];
+    if(v<=0||v<f[i-1]||v<f[i+1]||v<f[i-2]||v<f[i+2]||a.rms[Math.min(n-1,i+3)]<gate)continue;
+    const sg=f.slice(Math.max(0,i-W),Math.min(n,i+W)).sort(),base=sg[sg.length>>1]+mx*.03;
+    if(v<base*mult)continue;
+    const p={i,v,r:v/base,t:i*a.hop*1000+a.off},l=res[res.length-1];
+    if(l&&p.t-l.t<gapMs){if(p.v>l.v)res[res.length-1]=p}else res.push(p);
   }
   return res;
 }
+const topK=(o,K)=>o.length<=K?o:o.slice().sort((p,q)=>q.r-p.r).slice(0,Math.max(1,K)).sort((p,q)=>p.t-q.t);
 
 function tempo(ons,fixed){
-  let best=null;const lo=fixed||75,hi=fixed||185;
-  for(let b=lo;b<=hi+1e-9;b+=fixed?1:.05){
-    const T=60000/b;let c1=0,s1=0,c2=0,s2=0;
-    for(const o of ons){const a=2*Math.PI*o.t/T;c1+=o.v*Math.cos(a);s1+=o.v*Math.sin(a);c2+=o.v*Math.cos(2*a);s2+=o.v*Math.sin(2*a)}
-    const sc=Math.hypot(c1,s1)+.5*Math.hypot(c2,s2);
-    if(!best||sc>best.sc)best={bpm:b,sc,ph:Math.atan2(s1,c1),T};
+  const sc=b=>{
+    const T=60000/b;let c1=0,s1=0,c2=0,s2=0,c4=0,s4=0;
+    for(const o of ons){const a=2*Math.PI*o.t/T;c1+=o.v*Math.cos(a);s1+=o.v*Math.sin(a);c2+=o.v*Math.cos(2*a);s2+=o.v*Math.sin(2*a);c4+=o.v*Math.cos(4*a);s4+=o.v*Math.sin(4*a)}
+    return{b,sc:Math.hypot(c1,s1)+.5*Math.hypot(c2,s2)+.25*Math.hypot(c4,s4),ph:Math.atan2(s1,c1)};
+  };
+  let best;
+  if(fixed)best=sc(fixed);
+  else{
+    best=sc(75);
+    for(let b=75;b<=185;b+=.05){const r=sc(b);if(r.sc>best.sc)best=r}
+    const c=best.b;for(let b=c-.1;b<=c+.1;b+=.005){const r=sc(b);if(r.sc>best.sc)best=r}
+    const rb=Math.round(best.b);best=Math.abs(best.b-rb)<.08?sc(rb):sc(Math.round(best.b*100)/100);
   }
-  let bpm=best.bpm;if(!fixed){bpm=Math.round(bpm*10)/10;if(Math.abs(bpm-Math.round(bpm))<.15)bpm=Math.round(bpm)}
-  const T=60000/best.bpm;return{bpm,t0:((best.ph/(2*Math.PI))%1+1)%1*T};
+  const T=60000/best.b;return{bpm:best.b,t0:((best.ph/(2*Math.PI))%1+1)%1*T};
 }
 
-function notesFor(a,mult,gapMs,step,t0,g,sus){
+function f0(a,t){
+  const x=a.x,sr=a.sr,W=768,s=Math.round(t/1000*sr)+Math.round(.03*sr),tmin=Math.floor(sr/800),tmax=Math.min(Math.floor(sr/70),1024);
+  if(s<0||s+W+tmax+1>=x.length)return 0;
+  const d=new Float32Array(tmax+2);let run=0,best=0;
+  for(let tau=1;tau<=tmax;tau++){
+    let sm=0;for(let j=0;j<W;j++){const df=x[s+j]-x[s+j+tau];sm+=df*df}
+    run+=sm;d[tau]=run>0?sm*tau/run:1;
+    if(tau>=tmin+2&&d[tau-1]<.18&&d[tau-1]<d[tau-2]&&d[tau-1]<=d[tau]){best=tau-1;break}
+  }
+  if(!best)return 0;
+  const p=d[best-1],q=d[best],r=d[best+1],den=p-2*q+r;
+  return sr/(den?best+(p-r)/(2*den):best);
+}
+
+async function notesFor(a,gapMs,step,t0,g,sus,K){
   if(!a)return[];
-  const ons=peaks(a,mult,gapMs),cs=ons.map(o=>a.cent[o.i]),idx=ons.map((_,j)=>j).sort((p,q)=>cs[p]-cs[q]);
-  idx.forEach((j,r)=>{ons[j].l=Math.min(3,Math.floor(r*4/ons.length));ons[j].c=Math.round(r*99/ons.length)});
-  const out=[];let l1=-1,l2=-1;
+  const ons=topK(peaks(a,1.5,gapMs),K);let nv=0;
+  for(let j=0;j<ons.length;j++){const f=f0(a,ons[j].t);ons[j].f=f;if(f>0)nv++;if(j%40===0)await sleep()}
+  const usePitch=nv>=ons.length*.3;let last=null;
+  for(const o of ons){o.st=usePitch?(o.f>0?12*Math.log2(o.f/110):last):12*Math.log2(a.cent[o.i]+1);if(o.st!=null)last=o.st}
+  const first=ons.find(o=>o.st!=null);ons.forEach(o=>{if(o.st==null)o.st=first?first.st:0});
+  const idx=ons.map((_,j)=>j).sort((p,q)=>ons[p].st-ons[q].st);
+  idx.forEach((j,r)=>{ons[j].q=Math.min(3,Math.floor(r*4/ons.length));ons[j].c=Math.round(r*99/ons.length)});
+  const out=[];let prev=null,l1=-1,l2=-1,l3=-1;
   for(const o of ons){
     let t=g?t0+Math.round((o.t-t0)/g)*g:o.t;if(t<0)t=0;
     const p=out[out.length-1];if(p&&t-p.t<1)continue;
-    let l=o.l;if(l===l1&&l===l2)l=(l+2)%4;l2=l1;l1=l;
-    out.push({t,l,s:0,i:o.i,c:o.c,v:o.v});
+    let l=o.q;
+    if(prev){const d=o.st-prev.st;if(Math.abs(d)<.6)l=prev.l;else if(l===prev.l)l=d>0?Math.min(3,l+1):Math.max(0,l-1)}
+    if(l===l1&&l===l2&&l===l3)l=(l+2)%4;
+    l3=l2;l2=l1;l1=l;
+    const q={t,l,s:0,i:o.i,c:o.c,v:o.v,st:o.st};out.push(q);prev=q;
   }
   if(sus)out.forEach((o,j)=>{
     const r=a.rms,pk=Math.max(r[o.i],r[o.i+1]||0,r[o.i+2]||0,r[o.i+3]||0),lim=o.i+Math.round(4/a.hop);
@@ -269,14 +307,14 @@ async function generate(){
     for(const [k,n] of [['inst','Inst'],['opp','Voices-Opponent'],['ply','Voices-Player']])if(S[k]){say('Analizando '+n+'…');A[k]=await analyze(S[k])}
     const dur=Math.max(...Object.keys(A).map(k=>S[k].duration))*1000;
     say('Detectando tempo…');await sleep();
-    const tOn=A.inst?peaks(A.inst,1.15,40):[].concat(A.opp?peaks(A.opp,1.15,40):[],A.ply?peaks(A.ply,1.15,40):[]);
+    const tOn=A.inst?peaks(A.inst,2,40):[].concat(A.opp?peaks(A.opp,2,40):[],A.ply?peaks(A.ply,2,40):[]);
     if(tOn.length<8)throw new Error('Hay muy poco sonido para analizar.');
     const fx=parseFloat($('#bpm').value),T=tempo(tOn,fx>0?fx:0),bpm=T.bpm,step=60000/bpm/4,t0=T.t0+(+$('#off').value||0);
     const gs={easy:4,normal:2,hard:1}[$('#diff').value],sn=$('#snap').value,g=sn==='0'?0:step*(sn==='8'?2:1);
-    const mult=2-1.1*(+$('#dens').value)/100,sus=$('#sus').checked;
+    const pb={easy:1,normal:1.7,hard:2.6}[$('#diff').value]*(.5+(+$('#dens').value)/100),sus=$('#sus').checked,K=a=>Math.round(a.voiced*bpm/60*pb);
     say('Escribiendo notas…');await sleep();
-    R.opp=notesFor(A.opp,mult,gs*step,step,t0,g,sus);
-    R.ply=notesFor(A.ply,mult,gs*step,step,t0,g,sus);
+    R.opp=await notesFor(A.opp,gs*step,step,t0,g,sus,A.opp&&K(A.opp));
+    R.ply=await notesFor(A.ply,gs*step,step,t0,g,sus,A.ply&&K(A.ply));
     const sec=step*16,n=Math.max(1,Math.ceil(dur/sec)),mh=[];let last=!!A.ply;
     for(let s=0;s<n;s++){
       const po=A.ply?avg(A.ply,s*sec,(s+1)*sec):0,oo=A.opp?avg(A.opp,s*sec,(s+1)*sec):0;
@@ -303,10 +341,10 @@ async function generate(){
 }
 const G={h:[],orig:null,busy:false};
 function assemble(){
-  const {n,mh,bpm,sec}=R;
-  const secs=Array.from({length:n},(_,s)=>({sectionNotes:[],sectionBeats:4,mustHitSection:mh[s],gfSection:false,bpm,changeBPM:false,altAnim:false,typeOfSection:0}));
-  for(const [list,side] of [[R.opp,0],[R.ply,1]])for(const o of list){
-    const s=Math.min(n-1,Math.floor(o.t/sec)),hit=secs[s].mustHitSection,lane=((side===1)===hit)?o.l:o.l+4;
+  const {n,mh,bpm,sec}=R,sw=$('#swp').checked,mr=$('#mir').checked;
+  const secs=Array.from({length:n},(_,s)=>({sectionNotes:[],sectionBeats:4,mustHitSection:sw?!mh[s]:mh[s],gfSection:false,bpm,changeBPM:false,altAnim:false,typeOfSection:0}));
+  for(const [list,sd] of [[R.opp,0],[R.ply,1]])for(const o of list){
+    const side=sw?1-sd:sd,l=mr?3-o.l:o.l,s=Math.min(n-1,Math.floor(o.t/sec)),hit=secs[s].mustHitSection,lane=((side===1)===hit)?l:l+4;
     secs[s].sectionNotes.push([Math.round(o.t),lane,Math.round(o.s)]);
   }
   secs.forEach(x=>x.sectionNotes.sort((a,b)=>a[0]-b[0]));
@@ -374,6 +412,7 @@ async function send(){
   G.busy=false;$('#csend').disabled=false;
 }
 $('#csend').onclick=send;
+['swp','mir'].forEach(i=>$('#'+i).onchange=()=>{if(R.secs){assemble();draw()}});
 $('#cin').onkeydown=e=>{if(e.key==='Enter')send()};
 document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{$('#cin').value=b.dataset.t;send()});
 $('#go').onclick=generate;
@@ -383,7 +422,7 @@ function chart(v){
   const m={song:slug(),notes:R.secs,events:[],bpm:R.bpm,needsVoices:true,speed:+$('#spd').value||2,player1:$('#p1').value,player2:$('#p2').value,gfVersion:$('#p3').value,stage:$('#stage').value,arrowSkin:'',splashSkin:'noteSplashes'};
   if(v==='063')return{song:{...m,notes:R.secs.map(s=>({...s,lengthInSteps:16})),player3:null,validScore:true}};
   if(v==='073')return{song:{...m,validScore:true,disableNoteRGB:false}};
-  return{...m,offset:0,format:'psych_v1',disableNoteRGB:false};
+  return{...m,notes:R.secs.map(s=>({...s,sectionNotes:s.sectionNotes.map(([t,l,x])=>[t,((l<4)===s.mustHitSection)?l%4:l%4+4,x])})),offset:0,format:'psych_v1',disableNoteRGB:false};
 }
 document.querySelectorAll('.dlv').forEach(b=>b.onclick=()=>{
   const d=$('#diff').value,suf=d==='normal'?'':'-'+d,a=document.createElement('a');
@@ -409,11 +448,12 @@ function draw(){
   for(let sd=0;sd<2;sd++)for(let l=0;l<4;l++)arrow(X(sd,l),ry,lw*.9,l,COL[l],.55,true);
   if(!R.secs)return;
   cx.beginPath();cx.rect(0,ry-lw/2,W,H);cx.clip();
-  for(let sd=0;sd<2;sd++)for(const o of (sd?R.ply:R.opp)){
+  const SW=$('#swp').checked,MR=$('#mir').checked;
+  for(let sd=0;sd<2;sd++)for(const o of ((sd===1)!==SW?R.ply:R.opp)){
     const dt=o.t-t;if(dt>win||dt+o.s<-120)continue;
-    const y=ry+dt*ppm,x=X(sd,o.l),al=dt<-120?.25:1;
-    if(o.s){cx.globalAlpha=.7*al;cx.fillStyle=COL[o.l];cx.fillRect(x+lw*.9/2-lw*.1,Math.max(y,ry),lw*.2,o.s*ppm+(y<ry?dt*ppm:0))}
-    if(dt>-120)arrow(x,y,lw*.9,o.l,COL[o.l],al);
+    const L=MR?3-o.l:o.l,y=ry+dt*ppm,x=X(sd,L),al=dt<-120?.25:1;
+    if(o.s){cx.globalAlpha=.7*al;cx.fillStyle=COL[L];cx.fillRect(x+lw*.9/2-lw*.1,Math.max(y,ry),lw*.2,o.s*ppm+(y<ry?dt*ppm:0))}
+    if(dt>-120)arrow(x,y,lw*.9,L,COL[L],al);
   }
   cx.globalAlpha=1;
 }
